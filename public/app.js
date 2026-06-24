@@ -39,6 +39,7 @@ let thread = { kind: null, id: null, entries: [], perms: [] };
 let spawnColor = COLORS[0];
 const previews = new Map(); // agentId -> last text (for grid tiles)
 const permsByAgent = new Map(); // agentId -> [req]
+const drafts = new Map(); // focusId -> in-progress composer text (survives re-renders)
 let autoScroll = true;
 
 const agentById = (id) => agents.find((a) => a.id === id);
@@ -185,7 +186,7 @@ function renderFocus(stage) {
     <div class="feed" id="feed"></div>
     ${
         isAgent
-            ? `<div class="composer"><textarea id="say" rows="1" placeholder="message ${esc(a.name)}…   ${exited ? '↵ resume & continue' : '↵ send · ⇧↵ newline'}"></textarea><button class="send" id="sendBtn">Send</button></div>`
+            ? `<div class="composer"><textarea id="say" rows="1" placeholder="message ${esc(a.name)}…   ${exited ? '↵ resume & continue' : '↵ send · ⇧↵ newline'}">${esc(drafts.get(a.id) || '')}</textarea><button class="send" id="sendBtn">Send</button></div>`
             : s && s.isFile
               ? `<div class="composer chan-composer">
       <div class="cc-row">
@@ -221,9 +222,13 @@ function renderFocus(stage) {
             };
         const ta = $('#say');
         if (ta) {
-            ta.oninput = () => {
+            const resize = () => {
                 ta.style.height = 'auto';
                 ta.style.height = Math.min(ta.scrollHeight, 170) + 'px';
+            };
+            ta.oninput = () => {
+                drafts.set(focus.id, ta.value); // persist so a re-render can't wipe it
+                resize();
             };
             ta.onkeydown = (e) => {
                 if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
@@ -232,7 +237,9 @@ function renderFocus(stage) {
                 }
             };
             $('#sendBtn').onclick = sendSay;
+            resize(); // size to a restored draft
             ta.focus();
+            ta.setSelectionRange(ta.value.length, ta.value.length); // caret at end
         }
     } else if (s && s.isFile) {
         const au = $('#ccAuthor');
@@ -427,6 +434,7 @@ async function sendSay() {
     const text = ta.value.trim();
     if (!text || !focus) return;
     ta.value = '';
+    drafts.delete(focus.id); // clear the saved draft now that it's sent
     ta.style.height = 'auto';
     await fetch(`/api/agent/${focus.id}/say`, {
         method: 'POST',
