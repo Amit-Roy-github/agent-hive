@@ -1,0 +1,5 @@
+# Extra files to tail as pseudo-sessions (one absolute path per line).
+# Lines starting with # are ignored. These show up in the sidebar and
+# live-refresh in the transcript pane whenever the file changes.
+# Copy this to watched.txt and add your own paths.
+/Users/you/development/some-project/channel.md

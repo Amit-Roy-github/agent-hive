@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Agent Monitor</title>
+        <script>
+            try {
+                var t = localStorage.getItem('csm-theme');
+                if (t) document.documentElement.dataset.theme = t;
+            } catch (e) {}
+        </script>
+        <link rel="stylesheet" href="/app.css" />
+        <script src="/vendor/marked.umd.js"></script>
+        <script src="/vendor/purify.min.js"></script>
+    </head>
+    <body>
+        <header>
+            <h1>
+                <span class="logo">◆</span> <span class="wordmark"><b>Agent</b> Monitor</span>
+            </h1>
+            <div class="seg" id="viewToggle">
+                <button data-view="grid" class="on">▦ Grid</button>
+                <button data-view="focus">▤ Focus</button>
+            </div>
+            <div class="status">
+                <span class="pill"><span class="dot" id="conn"></span> <span id="connTxt">connecting…</span></span>
+                <span class="pill" id="activeCount">0 running</span>
+                <button class="iconbtn" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme">◐</button>
+            </div>
+        </header>
+
+        <div class="wrap">
+            <aside>
+                <div class="side-sec">
+                    <div class="side-head">
+                        <span>Agents</span><button class="mini primary" id="newAgentBtn">+ New</button>
+                    </div>
+                    <div id="agentList" class="agent-list"></div>
+                </div>
+                <div class="side-sec grow">
+                    <div class="side-head"><span>Sessions</span></div>
+                    <input id="filter" class="filter" placeholder="filter sessions…" />
+                    <label class="chk"><input type="checkbox" id="activeOnly" /> active only</label>
+                    <div id="sessionList" class="session-list"></div>
+                    <div class="addwatch">
+                        <input id="watchPath" placeholder="+ watch a file (~/path)" />
+                        <button class="mini" id="watchBtn">Add</button>
+                    </div>
+                    <div id="watchMsg" class="watchmsg"></div>
+                </div>
+            </aside>
+
+            <main id="stage"></main>
+        </div>
+
+        <!-- spawn dialog -->
+        <div class="modal-bg" id="spawnModal" hidden>
+            <div class="modal">
+                <div class="modal-head">Launch agent <button class="iconbtn" id="spawnClose">✕</button></div>
+                <div class="modal-body">
+                    <label>Name<input id="spName" placeholder="e.g. api-fix" /></label>
+                    <label
+                        >Color
+                        <div class="swatches" id="spSwatches"></div>
+                    </label>
+                    <label
+                        >Working dir <span class="hint">jaha agent chale</span>
+                        <input id="spCwd" placeholder="~/development/your-repo" />
+                    </label>
+                    <div class="row2">
+                        <label
+                            >Model
+                            <select id="spModel">
+                                <option value="">default</option>
+                                <option value="sonnet">sonnet</option>
+                                <option value="opus">opus</option>
+                                <option value="haiku">haiku</option>
+                            </select>
+                        </label>
+                        <label
+                            >Trust
+                            <select id="spTrust">
+                                <option value="safe">safe — risky pe pucho</option>
+                                <option value="full">full — auto-approve</option>
+                                <option value="readonly">read-only — plan</option>
+                            </select>
+                        </label>
+                    </div>
+                    <label
+                        >First message
+                        <textarea
+                            id="spPrompt"
+                            rows="3"
+                            placeholder="kya karwana hai… (e.g. add a /health route and tests)"
+                        ></textarea>
+                    </label>
+                    <div class="modal-err" id="spErr"></div>
+                </div>
+                <div class="modal-foot">
+                    <button id="spCancel" class="btn">Cancel</button>
+                    <button id="spLaunch" class="btn primary">Launch ▸</button>
+                </div>
+            </div>
+        </div>
+
+        <script src="/app.js"></script>
+    </body>
+</html>
