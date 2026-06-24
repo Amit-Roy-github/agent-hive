@@ -19,6 +19,13 @@ npm start          # or: node server.js
 # open http://127.0.0.1:8787
 ```
 
+For development use `npm run dev` (nodemon) — it auto-restarts the server when
+backend code (`server.js`, `server/`) changes. Frontend (`public/`) and runtime
+state (`agents.json`, `watched.txt`) are **not** watched: UI edits just need a
+browser refresh, and state writes must not trigger restarts (a restart drops any
+running agents — they can be **Resumed** afterwards). Override the port with
+`PORT=8799 npm run dev`.
+
 Code style is prettier with 4-space indent (`.prettierrc`); run `npm run format`.
 
 ## What it does

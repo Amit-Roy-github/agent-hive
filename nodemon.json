@@ -1,0 +1,13 @@
+{
+  "watch": ["server.js", "server/"],
+  "ext": "js,mjs",
+  "ignore": [
+    "public/",
+    "node_modules/",
+    "agents.json",
+    "agents_off.json",
+    "watched.txt",
+    "*.log"
+  ],
+  "delay": 500
+}
