@@ -13,18 +13,26 @@ login — no separate API key, same subscription and rate limits.
 
 ```bash
 cd ~/development/agent-deck
-nvm use            # pins node via .nvmrc
 npm install        # pulls the Claude Agent SDK (first time only)
-npm start          # or: node server.js
+npm start          # ./start.sh — pins a compatible Node, frees the port, runs
 # open http://127.0.0.1:8787
 ```
 
-For development use `npm run dev` (nodemon) — it auto-restarts the server when
-backend code (`server.js`, `server/`) changes. Frontend (`public/`) and runtime
-state (`agents.json`, `watched.txt`) are **not** watched: UI edits just need a
-browser refresh, and state writes must not trigger restarts (a restart drops any
-running agents — they can be **Resumed** afterwards). Override the port with
-`PORT=8799 npm run dev`.
+> **Node ≥ 22 required.** The Claude Agent SDK uses `Symbol.asyncDispose`; on
+> older Node every agent fails to start/resume with `TypeError: Object not
+> disposable`. `start.sh`/`dev.sh` auto-select an installed Node ≥ 22 (preferring
+> 25) so they never fall back to the shell's default — don't launch `server.js`
+> with a bare `node` unless you know it's ≥ 22 (the server guards and exits if not).
+
+For development use `npm run dev` (→ `dev.sh`, nodemon) — auto-restarts the
+server when backend code (`server.js`, `server/`) changes, on the same Node ≥ 22.
+Frontend (`public/`) and runtime state (`agents.json`, `watched.txt`) are **not**
+watched: UI edits just need a browser refresh, and state writes must not trigger
+restarts (a restart drops any running agents — they can be **Resumed**
+afterwards). Override the port with `PORT=8799 npm run dev`.
+
+The server logs the agent lifecycle (start/resume/ready/SDK errors) to the
+terminal — watch it there when an agent won't start or resume.
 
 Code style is prettier with 4-space indent (`.prettierrc`); run `npm run format`.
 

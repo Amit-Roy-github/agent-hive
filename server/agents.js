@@ -12,6 +12,13 @@ import { checkPerm, resolvePerm, pendingPerms } from './permissions.js';
 import { fullTranscript, cache } from './sessions.js';
 import { normalize, decodeProject } from './normalize.js';
 
+// ---- logging --------------------------------------------------------------
+// One-line, timestamped server logs for the agent lifecycle. Show up in the
+// terminal (and nodemon) so spawn/resume/SDK failures are debuggable at a glance.
+const ts = () => new Date().toISOString().slice(11, 23);
+const log = (...a) => console.log(`[${ts()}] [agent]`, ...a);
+const logErr = (...a) => console.error(`[${ts()}] [agent]`, ...a);
+
 // ---- persistence ----------------------------------------------------------
 // Save durable metadata only (live process/entries are runtime). A sessionId is
 // required — that's what makes a saved agent resumable.
@@ -121,6 +128,7 @@ function startQuery(a, resume) {
     if (a.model) options.model = a.model;
     if (resume && a.sessionId) options.resume = a.sessionId;
     a.status = 'starting';
+    log(`${resume ? 'resume' : 'start'} "${a.name}" (${a.id.slice(0, 8)}) cwd=${a.cwd} model=${a.model || 'default'} trust=${a.trust}${resume && a.sessionId ? ` resume=${a.sessionId}` : ''}`);
     a.q = query({ prompt: input.stream, options });
     consume(a, a.q); // fire-and-forget; errors handled inside
     return input;
@@ -133,9 +141,13 @@ async function consume(a, q) {
     } catch (err) {
         if (a.stopping || (err && err.name === 'AbortError')) {
             a.status = 'exited'; // intentional stop
+            log(`stopped "${a.name}" (${a.id.slice(0, 8)})`);
         } else {
             a.status = 'error';
-            a.stderr = (a.stderr + '\n[sdk error] ' + ((err && err.message) || err)).slice(-4000);
+            const msg = (err && err.message) || String(err);
+            a.stderr = (a.stderr + '\n[sdk error] ' + msg).slice(-4000);
+            logErr(`SDK error in "${a.name}" (${a.id.slice(0, 8)}): ${err?.name || ''} ${msg}`);
+            if (err?.stack) logErr(err.stack);
         }
     }
     a.q = null;
@@ -156,6 +168,7 @@ function handleAgentEvent(a, o) {
     if (o.type === 'system' && o.subtype === 'init') {
         if (a.status === 'starting') {
             a.status = 'idle';
+            log(`ready "${a.name}" (${a.id.slice(0, 8)}) session=${o.session_id}`);
             broadcast('agent-status', { id: a.id, status: a.status });
         }
         return;
@@ -274,14 +287,24 @@ export function adoptSession(sessionId) {
 // Resume an ended agent against its persisted session — conversation continues.
 export function resumeAgent(id) {
     const a = agents.get(id);
-    if (!a) return false;
-    if (a.q && a.status !== 'exited' && a.status !== 'error') return true; // already live
-    if (!a.sessionId) return false; // nothing to resume yet
+    if (!a) {
+        logErr(`resume failed: no agent with id ${id}`);
+        return false;
+    }
+    if (a.q && a.status !== 'exited' && a.status !== 'error') {
+        log(`resume "${a.name}" (${a.id.slice(0, 8)}) ignored — already live (${a.status})`);
+        return true; // already live
+    }
+    if (!a.sessionId) {
+        logErr(`resume "${a.name}" (${a.id.slice(0, 8)}) failed — no sessionId yet (never reached init)`);
+        return false; // nothing to resume yet
+    }
     try {
         if (!fs.statSync(a.cwd).isDirectory()) throw 0;
     } catch {
         a.status = 'error';
         a.stderr = 'working dir missing: ' + a.cwd;
+        logErr(`resume "${a.name}" (${a.id.slice(0, 8)}) failed — working dir missing: ${a.cwd}`);
         broadcast('agent-status', { id, status: 'error', error: a.stderr });
         broadcast('agents', listAgents());
         return false;

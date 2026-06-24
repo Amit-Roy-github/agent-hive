@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Start the monitor using Node 26 directly (independent of the shell's default node).
+# Start the monitor on a compatible Node (>= 22), independent of the shell's
+# default node. The Claude Agent SDK needs Symbol.asyncDispose (Node >= 22) or
+# every agent fails with "TypeError: Object not disposable".
 set -e
-NODE="$HOME/.nvm/versions/node/v26.3.1/bin/node"
-[ -x "$NODE" ] || { echo "Node 26 not found at $NODE — run: nvm install node"; exit 1; }
 cd "$(dirname "$0")"
+source "$(dirname "$0")/scripts/pick-node.sh"   # sets $NODE
+
+echo "Starting with $("$NODE" --version)…"
 
 # Free the port if a previous instance is still running.
 PORT="${PORT:-8787}"
@@ -13,5 +16,4 @@ if lsof -ti ":$PORT" >/dev/null 2>&1; then
   sleep 1
 fi
 
-echo "Starting with $("$NODE" --version)…"
 exec "$NODE" server.js

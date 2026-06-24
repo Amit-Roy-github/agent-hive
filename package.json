@@ -7,8 +7,9 @@
     "csm": "server.js"
   },
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "./start.sh",
+    "start:node": "node server.js",
+    "dev": "./dev.sh",
     "format": "prettier --write \"server.js\" \"server/**/*.js\" \"public/app.js\" \"public/app.css\" \"public/index.html\""
   },
   "engines": {
