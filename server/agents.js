@@ -4,7 +4,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { z } from 'zod';
 import { TRUST_MODE, AGENTSFILE, ACTIVE_WINDOW_MS, expand } from './config.js';
 import { broadcast } from './sse.js';
 import { agents, listAgents } from './state.js';
@@ -31,6 +32,7 @@ export function persistAgents() {
             color: a.color,
             cwd: a.cwd,
             model: a.model,
+            effort: a.effort,
             trust: a.trust,
             sessionId: a.sessionId,
             createdAt: a.createdAt,
@@ -57,6 +59,7 @@ export function loadAgents() {
             color: s.color || '#5aa2ff',
             cwd: s.cwd,
             model: s.model || null,
+            effort: s.effort || null,
             trust: s.trust || 'safe',
             status: 'exited',
             sessionId: s.sessionId,
@@ -111,6 +114,91 @@ function makeInput() {
     };
 }
 
+// ---- agent-to-agent messaging --------------------------------------------
+// Resolve a target agent from a free-form "name or id" (the live `agents`
+// registry is loaded from agents.json, so this is the agents.json data + live
+// status). Matching order: exact id / id-prefix, then exact name, then partial
+// name. Returns { agent } or { error } (error also covers ambiguous matches).
+export function resolveAgent(nameOrId) {
+    const key = String(nameOrId || '').trim();
+    if (!key) return { error: 'empty target — pass a name or id' };
+    if (agents.has(key)) return { agent: agents.get(key) };
+    const lower = key.toLowerCase();
+    const byId = [];
+    const byNameExact = [];
+    const byNamePart = [];
+    for (const a of agents.values()) {
+        if (a.id === key || a.id.startsWith(key)) byId.push(a);
+        const n = (a.name || '').toLowerCase();
+        if (n === lower) byNameExact.push(a);
+        else if (n.includes(lower)) byNamePart.push(a);
+    }
+    const pick = byId.length ? byId : byNameExact.length ? byNameExact : byNamePart;
+    if (pick.length === 1) return { agent: pick[0] };
+    if (pick.length > 1) {
+        const list = pick.map((a) => `${a.name} (${a.id.slice(0, 8)})`).join(', ');
+        return { error: `ambiguous "${key}" — matches: ${list}. Use a full id.` };
+    }
+    return { error: `no agent matches "${key}" — call list_agents to see who's on the deck` };
+}
+
+// Per-agent in-process MCP server: gives THIS agent (`self`) tools to discover
+// and message other agents on the deck. Delivery is one-way (push into the
+// target's session); the target replies by calling message_agent back at `self`.
+function buildDeckTools(self) {
+    return createSdkMcpServer({
+        name: 'agent-deck',
+        version: '0.1.0',
+        tools: [
+            tool(
+                'list_agents',
+                'List the other agents on the deck (name, short id, status) so you can pick who to message.',
+                {},
+                async () => {
+                    const rows = [...agents.values()]
+                        .filter((a) => a.id !== self.id)
+                        .map((a) => `- ${a.name} · id=${a.id.slice(0, 8)} · ${a.status}`)
+                        .join('\n');
+                    return { content: [{ type: 'text', text: rows || '(no other agents on the deck)' }] };
+                },
+            ),
+            tool(
+                'message_agent',
+                'Send a message to another agent on the deck by its name or id (resolved from agents.json). ' +
+                    'The message lands in that agent\'s session and wakes it if asleep. This is one-way: the ' +
+                    'reply does NOT come back here inline — the other agent will reply by messaging you back, ' +
+                    'which arrives as a new message in your session.',
+                {
+                    target: z.string().describe('name or id (full or 8-char prefix) of the agent to message'),
+                    text: z.string().describe('the message to send'),
+                },
+                async ({ target, text }) => {
+                    const { agent: t, error } = resolveAgent(target);
+                    if (error) return { content: [{ type: 'text', text: error }], isError: true };
+                    if (t.id === self.id)
+                        return { content: [{ type: 'text', text: 'That target is you.' }], isError: true };
+                    const from8 = self.id.slice(0, 8);
+                    const note =
+                        `📨 Message from ${self.name} (${from8}):\n\n${text}\n\n` +
+                        `— To reply, use message_agent with target "${from8}".`;
+                    const ok = sayToAgent(t.id, note);
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: ok
+                                    ? `Delivered to ${t.name} (${t.id.slice(0, 8)}). Their reply will arrive as a new message to you.`
+                                    : `Could not deliver to ${t.name} (${t.id.slice(0, 8)}).`,
+                            },
+                        ],
+                        isError: !ok,
+                    };
+                },
+            ),
+        ],
+    });
+}
+
 // Start (or resume) a query for this agent and consume its messages.
 function startQuery(a, resume) {
     const input = makeInput();
@@ -124,11 +212,14 @@ function startQuery(a, resume) {
         stderr: (d) => {
             a.stderr = (a.stderr + d).slice(-4000);
         },
+        // in-process tools so this agent can discover & message other agents
+        mcpServers: { 'agent-deck': buildDeckTools(a) },
     };
     if (a.model) options.model = a.model;
+    if (a.effort) options.effort = a.effort;
     if (resume && a.sessionId) options.resume = a.sessionId;
     a.status = 'starting';
-    log(`${resume ? 'resume' : 'start'} "${a.name}" (${a.id.slice(0, 8)}) cwd=${a.cwd} model=${a.model || 'default'} trust=${a.trust}${resume && a.sessionId ? ` resume=${a.sessionId}` : ''}`);
+    log(`${resume ? 'resume' : 'start'} "${a.name}" (${a.id.slice(0, 8)}) cwd=${a.cwd} model=${a.model || 'default'} effort=${a.effort || 'default'} trust=${a.trust}${resume && a.sessionId ? ` resume=${a.sessionId}` : ''}`);
     a.q = query({ prompt: input.stream, options });
     consume(a, a.q); // fire-and-forget; errors handled inside
     return input;
@@ -206,7 +297,7 @@ function handleAgentEvent(a, o) {
 }
 
 // ---- lifecycle ------------------------------------------------------------
-export function spawnAgent({ name, color, cwd, prompt, model, trust }) {
+export function spawnAgent({ name, color, cwd, prompt, model, effort, trust }) {
     const id = crypto.randomUUID();
     cwd = expand(cwd || os.homedir());
     trust = TRUST_MODE[trust] ? trust : 'safe';
@@ -216,6 +307,7 @@ export function spawnAgent({ name, color, cwd, prompt, model, trust }) {
         color: color || '#5aa2ff',
         cwd,
         model: model || null,
+        effort: effort || null,
         trust,
         status: 'starting',
         sessionId: null,
@@ -262,6 +354,7 @@ export function adoptSession(sessionId) {
         color: '#5aa2ff',
         cwd,
         model: meta.model || null,
+        effort: meta.effort || null,
         trust: 'safe',
         status: 'starting',
         sessionId,
@@ -350,6 +443,36 @@ export function compactAgent(id) {
     }
     a.status = 'compacting';
     broadcast('agent-status', { id, status: a.status });
+    return true;
+}
+
+// Change an agent's reasoning effort. We persist a.effort (so it carries over on
+// the next start/resume via options.effort) and, when the agent is live, push it
+// to the running session via the SDK's apply_flag_settings control request.
+// Note: the live path supports low/medium/high/xhigh; 'max' only applies on the
+// next start (it isn't a live-settable flag level). The /effort slash command is
+// NOT available in the headless SDK environment, hence the control request.
+const EFFORT_LEVELS = new Set(['', 'low', 'medium', 'high', 'xhigh', 'max']);
+const LIVE_EFFORT = new Set(['low', 'medium', 'high', 'xhigh']);
+export function setEffort(id, effort) {
+    const a = agents.get(id);
+    if (!a) return false;
+    if (!EFFORT_LEVELS.has(effort)) return false;
+    const prev = a.effort;
+    a.effort = effort || null;
+    const live = a.effort && a.q && a.q.applyFlagSettings && a.status !== 'exited' && a.status !== 'error';
+    let how = 'next start/resume';
+    if (live && LIVE_EFFORT.has(a.effort)) {
+        how = 'live';
+        a.q
+            .applyFlagSettings({ effortLevel: a.effort })
+            .catch((e) => logErr(`effort "${a.name}" (${a.id.slice(0, 8)}) live apply failed: ${e?.message || e}`));
+    } else if (live) {
+        how = 'next start/resume (max not live-settable)';
+    }
+    log(`effort "${a.name}" (${a.id.slice(0, 8)}) ${prev || 'default'} -> ${a.effort || 'default'} [${how}]`);
+    persistAgents();
+    broadcast('agents', listAgents());
     return true;
 }
 

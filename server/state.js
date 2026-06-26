@@ -12,6 +12,7 @@ export function publicAgent(a) {
         color: a.color,
         cwd: a.cwd,
         model: a.model,
+        effort: a.effort,
         trust: a.trust,
         status: a.status,
         ctx: a.ctx || null,

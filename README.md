@@ -1,3 +1,4 @@
+#### Mission : SH - 3.0
 # Agent Monitor
 
 A live control panel for Claude Code agents, built on the **Claude Agent SDK**.

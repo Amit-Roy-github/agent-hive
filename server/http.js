@@ -23,6 +23,7 @@ import {
     stopAgent,
     resumeAgent,
     setTrust,
+    setEffort,
     compactAgent,
     getAgentContext,
 } from './agents.js';
@@ -150,6 +151,7 @@ export function createServer() {
                         cwd: abs,
                         prompt: body.prompt,
                         model: body.model,
+                        effort: body.effort,
                         trust: body.trust,
                     });
                     return send(res, 200, 'application/json', JSON.stringify({ ok: true, id: a.id }));
@@ -210,6 +212,17 @@ export function createServer() {
                         ok ? 200 : 400,
                         'application/json',
                         JSON.stringify(ok ? { ok: true } : { error: 'invalid trust level' }),
+                    );
+                });
+            }
+            if (req.method === 'POST' && action === 'effort') {
+                return readBody(req, (body) => {
+                    const ok = setEffort(id, (body.effort || '').trim());
+                    return send(
+                        res,
+                        ok ? 200 : 400,
+                        'application/json',
+                        JSON.stringify(ok ? { ok: true } : { error: 'invalid effort level' }),
                     );
                 });
             }

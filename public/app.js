@@ -124,7 +124,7 @@ function renderGrid(stage) {
         ${np ? `<span class="permdot">⚠ ${np}</span>` : ''}<span class="fstatus ${esc(a.status)}">${esc(a.status)}</span></div>
       <div class="cwd">${esc(a.cwd)}</div>
       <div class="tile-feed">${esc(previews.get(a.id) || '…')}</div>
-      <div class="tile-foot"><span>${esc(a.model || 'default')}</span><span>·</span><span>${esc(a.trust)}</span><span>·</span><span>${a.msgs} msgs</span></div>
+      <div class="tile-foot"><span>${esc(a.model || 'default')}</span><span>·</span><span>${esc(a.effort || 'default')}</span><span>·</span><span>${esc(a.trust)}</span><span>·</span><span>${a.msgs} msgs</span></div>
     </div>`;
         })
         .join('');
@@ -156,7 +156,17 @@ function renderFocus(stage) {
       <div class="fright">
         ${
             isAgent
-                ? `<select id="trustSel" class="cc-sel trustsel" title="permission level">${[
+                ? `<select id="effortSel" class="cc-sel effortsel" title="reasoning effort (/effort)">${[
+                      ['', 'effort: default'],
+                      ['low', 'effort: low'],
+                      ['medium', 'effort: medium'],
+                      ['high', 'effort: high'],
+                      ['xhigh', 'effort: xhigh'],
+                      ['max', 'effort: max'],
+                  ]
+                      .map(([v, l]) => `<option value="${v}"${(a.effort || '') === v ? ' selected' : ''}>${l}</option>`)
+                      .join('')}</select>
+                  <select id="trustSel" class="cc-sel trustsel" title="permission level">${[
                       ['safe', 'safe — ask on risky'],
                       ['full', 'full — auto-approve'],
                       ['readonly', 'read-only — plan'],
@@ -212,6 +222,14 @@ function renderFocus(stage) {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ trust: ts.value }),
+                }).catch(() => {});
+        const es = $('#effortSel');
+        if (es)
+            es.onchange = () =>
+                fetch(`/api/agent/${focus.id}/effort`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ effort: es.value }),
                 }).catch(() => {});
         const cb = $('#compactBtn');
         if (cb)
@@ -510,6 +528,7 @@ async function launchAgent() {
         color: spawnColor,
         cwd: $('#spCwd').value.trim(),
         model: $('#spModel').value,
+        effort: $('#spEffort').value,
         trust: $('#spTrust').value,
         prompt: $('#spPrompt').value.trim(),
     };
