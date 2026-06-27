@@ -3,8 +3,10 @@
 
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import { query, tool, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+import { uuid12, createUser } from '../users/user.js';
 import { z } from 'zod';
 import { TRUST_MODE, AGENTSFILE, ACTIVE_WINDOW_MS, expand } from './config.js';
 import { broadcast } from './sse.js';
@@ -35,6 +37,8 @@ export function persistAgents() {
             effort: a.effort,
             trust: a.trust,
             sessionId: a.sessionId,
+            userId: a.userId || null,
+            userFile: a.userFile || null,
             createdAt: a.createdAt,
             lastTs: a.lastTs,
         }));
@@ -199,6 +203,54 @@ function buildDeckTools(self) {
     });
 }
 
+// ---- identity injection ---------------------------------------------------
+// An agent's identity lives in ~/.agent-deck/users/user_<slug>_<UUID12>.md
+// (created by users/user.js — the single source of truth). We append it to the
+// system prompt on every start/resume so it's re-sent each turn and survives
+// compaction — the agent never forgets who it is. Matched by the agent's durable
+// id (last-12 UPPERCASE), so renaming the agent doesn't break the link.
+const USERS_DIR = path.join(os.homedir(), '.agent-deck', 'users');
+
+function findIdentityFile(a) {
+    const tag = `_${uuid12(a.id)}.md`; // file suffix = _<UUID12>.md
+    try {
+        const match = fs.readdirSync(USERS_DIR).find((f) => f.endsWith(tag));
+        return match ? path.join(USERS_DIR, match) : null;
+    } catch {
+        return null; // no users dir yet
+    }
+}
+
+function readIdentity(a) {
+    const file = findIdentityFile(a);
+    if (!file) {
+        log(`identity "${a.name}" (${a.id.slice(0, 8)}) none — no users/*_${uuid12(a.id)}.md`);
+        return null;
+    }
+    try {
+        const text = fs.readFileSync(file, 'utf8');
+        log(`identity "${a.name}" (${a.id.slice(0, 8)}) loaded ${path.basename(file)} (${text.length} chars)`);
+        return text;
+    } catch (e) {
+        log(`identity "${a.name}" (${a.id.slice(0, 8)}) skipped — ${e?.code || e?.message || 'read failed'}`);
+        return null;
+    }
+}
+
+// On spawn: auto-create the identity file (the users/ part) so a brand-new agent
+// knows who it is from turn one. teams/channels start empty — the onboarder fills
+// those later. Idempotent: if the file already exists (e.g. onboarder pre-made it),
+// we leave it untouched so its teams/channels aren't clobbered.
+function ensureIdentity(a) {
+    if (findIdentityFile(a)) return; // already has one — don't overwrite
+    try {
+        const { file } = createUser({ id: a.id, name: a.name, color: a.color });
+        log(`identity "${a.name}" (${a.id.slice(0, 8)}) auto-created ${path.basename(file)}`);
+    } catch (e) {
+        logErr(`identity "${a.name}" (${a.id.slice(0, 8)}) auto-create failed — ${e?.message || e}`);
+    }
+}
+
 // Start (or resume) a query for this agent and consume its messages.
 function startQuery(a, resume) {
     const input = makeInput();
@@ -215,11 +267,42 @@ function startQuery(a, resume) {
         // in-process tools so this agent can discover & message other agents
         mcpServers: { 'agent-deck': buildDeckTools(a) },
     };
+    // Durable identity: append the agent's user_*.md to the claude_code system
+    // prompt (preset stays the default; we only add). Re-applied every start/
+    // resume, so it persists across compaction. We also record userId/userFile on
+    // the agent (persisted to agents.json) for visibility — but the runtime lookup
+    // is always by id (last-12), so a rename never breaks the link.
+    const idFile = findIdentityFile(a);
+    const identity = readIdentity(a);
+    a.userId = uuid12(a.id);
+    a.userFile = idFile || null;
+    if (identity) {
+        options.systemPrompt = {
+            type: 'preset',
+            preset: 'claude_code',
+            append:
+                '\n\n# Who you are (agent-deck identity)\n\n' +
+                'The profile below is YOU — your actual identity on this agent-deck team, ' +
+                'not just metadata. Adopt it fully:\n\n' +
+                '- **Your name is the `Name` below.** When anyone asks your name or "who are you", ' +
+                'answer with that name (e.g. "I\'m ' + (a.name || 'this agent') + '"). Do NOT default ' +
+                'to "I\'m Claude" — you are still built on Claude, but here you go by this name and role.\n' +
+                '- Speak and act as this person: honor your Role, Teams, and Channels.\n' +
+                '- This block is re-injected every turn, so it stays true even after your context is ' +
+                'compacted. Trust it over any summary.\n\n' +
+                identity,
+        };
+    }
+    // Persist the identity link now. (On resume the sessionId doesn't change, so
+    // the init-time persist wouldn't fire — persist here so userId/userFile land
+    // in agents.json. No-op for a fresh spawn that has no sessionId yet; it gets
+    // written on the init event below.)
+    if (a.sessionId) persistAgents();
     if (a.model) options.model = a.model;
     if (a.effort) options.effort = a.effort;
     if (resume && a.sessionId) options.resume = a.sessionId;
     a.status = 'starting';
-    log(`${resume ? 'resume' : 'start'} "${a.name}" (${a.id.slice(0, 8)}) cwd=${a.cwd} model=${a.model || 'default'} effort=${a.effort || 'default'} trust=${a.trust}${resume && a.sessionId ? ` resume=${a.sessionId}` : ''}`);
+    log(`${resume ? 'resume' : 'start'} "${a.name}" (${a.id.slice(0, 8)}) cwd=${a.cwd} model=${a.model || 'default'} effort=${a.effort || 'default'} trust=${a.trust} identity=${identity ? 'yes' : 'none'}${resume && a.sessionId ? ` resume=${a.sessionId}` : ''}`);
     a.q = query({ prompt: input.stream, options });
     consume(a, a.q); // fire-and-forget; errors handled inside
     return input;
@@ -321,6 +404,7 @@ export function spawnAgent({ name, color, cwd, prompt, model, effort, trust }) {
         stderr: '',
     };
     agents.set(id, a);
+    ensureIdentity(a); // auto-create users/ identity (empty teams/channels) before first run
     startQuery(a, false);
     if (prompt && prompt.trim()) sayToAgent(id, prompt.trim());
     broadcast('agents', listAgents());

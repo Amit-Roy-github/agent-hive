@@ -27,7 +27,7 @@ startPolling();
 
 const server = createServer();
 server.listen(PORT, HOST, () => {
-    console.log(`\n  Agent Monitor`);
+    console.log(`\n  Agent Deck`);
     console.log(`  watching: ${CLAUDE_PROJECTS_DIR}`);
     console.log(`  sessions: ${cache.size}`);
     console.log(`  open:     http://${HOST}:${PORT}\n`);

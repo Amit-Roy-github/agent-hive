@@ -19,6 +19,14 @@
 6. In `channel.md`, link the conversations file (`./conversations.md`).
 7. Seed `conversations.md` with the **conversations.md content** template below —
    every channel uses the exact same format.
+8. **Add the `conversations.md` path to `watched.txt`** (in the agent-deck repo
+   root). One absolute path per line — this makes the channel show up in the UI
+   sidebar and live-refresh when anyone writes to it.
+   ```
+   # in watched.txt
+   /absolute/path/to/.agent-deck/channels/channel_<channel-slug>_<UUID12>/conversations.md
+   ```
+   Skip this and the channel exists on disk but never appears in the UI.
 
 ## channel.md content (keep it small)
 
@@ -27,7 +35,7 @@
 
 - **ChannelId:** `<UUID12>`
 - **Type:**      team | group
-- **Folder:**    `channel_<channel-slug>_<UUID12>`
+- **Path:**      ~/.agent-deck/channels/channel_<channel-slug>_<UUID12>/
 
 ## Description
 <1-2 lines — what this channel is for>
@@ -37,10 +45,10 @@
 - **Name:**   <Name>
 - **UserId:** `<user-UUID12>`
 - **Role:**   <role>
-- **File:**   `users/user_<name-slug>_<user-UUID12>.md`
+- **Path:**   ~/.agent-deck/users/user_<name-slug>_<user-UUID12>.md
 
-## Channel conversations file 
-- ./conversations.md
+## Channel conversations file
+- ~/.agent-deck/channels/channel_<channel-slug>_<UUID12>/conversations.md
 ---
 ```
 

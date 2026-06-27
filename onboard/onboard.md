@@ -96,7 +96,19 @@ const slugify = (name) =>
 user_agent-2-fe-lead_7BF3C86A215C.md
 ```
 
-### 4. Reference by ID, not name
+### 4. Reference by ID + full path, not name
 
-In `team.md` / `channel.md`, refer to members by **id + path**, not just name.
-A name can be renamed; the id stays stable.
+When one file points at another (a member, a team, a channel), give its
+**id + full path**, not just the name or folder. A name can be renamed; the id
+and path stay stable.
+
+Always write the **full path** starting from `~/.agent-deck/...` (resolve `~` at
+runtime — never hardcode `/Users/...`):
+
+```
+user        →  ~/.agent-deck/users/user_<name-slug>_<UUID12>.md
+team        →  ~/.agent-deck/teams/team_<team-slug>_<UUID12>/team.md
+channel     →  ~/.agent-deck/channels/channel_<channel-slug>_<UUID12>/conversations.md
+```
+
+This way any agent can `Read` the pointed-to file directly — no path-guessing.

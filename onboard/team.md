@@ -20,7 +20,7 @@
 # Team: <Team Name>
 
 - **TeamId:** `<UUID12>`
-- **Folder:** `team_<team-slug>_<UUID12>`
+- **Path:**   ~/.agent-deck/teams/team_<team-slug>_<UUID12>/team.md
 
 ## About
 <2-3 lines — why this team exists, what it does>
@@ -31,14 +31,14 @@
 - **UserId:** `<user-UUID12>`
 - **Role:**   <role>
 - **About:**  <one-line description>
-- **File:**   `users/user_<name-slug>_<user-UUID12>.md`
+- **Path:**   ~/.agent-deck/users/user_<name-slug>_<user-UUID12>.md
 ---
 - **Name:**   <Name>
 - **UserId:** `<user-UUID12>`
 - **Role:**   <role>
 - **About:**  <one-line description>
-- **File:**   `users/user_<name-slug>_<user-UUID12>.md`
+- **Path:**   ~/.agent-deck/users/user_<name-slug>_<user-UUID12>.md
 ---
 ```
 
-Refer to members by **UserId + File**, not just name. Keep the file small.
+Refer to members by **UserId + Path**, not just name. Keep the file small.
