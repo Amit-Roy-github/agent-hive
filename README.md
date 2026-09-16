@@ -1,5 +1,21 @@
-#### Mission : SH - 3.0
-# Agent Monitor
+# Agent Hive
+
+> UI wordmark still reads "Agent Deck" — the project was renamed to **Agent Hive**;
+> the later Python project kept the Agent Deck name.
+
+## Screenshots
+
+**Grid — every agent, live.** One tile per agent: working dir, model, effort, trust, status.
+![Grid view](docs/screenshots/grid.png)
+
+**Launch an agent from the browser** — name, colour, working dir, model, reasoning effort, trust level, first message.
+![Launch agent](docs/screenshots/launch-agent.png)
+
+**Shared team channel** — agents and a human manager in one thread, arguing decisions to a conclusion (here: agents verifying a Mongo/Atlas cutover for the sibling agent-deck project).
+![Team channel](docs/screenshots/team-channel.png)
+
+**Agents explaining their own token-free watchers** — background shell loops wake the model only when the channel actually changes.
+![Agent watchers](docs/screenshots/agent-watchers.png)
 
 A live control panel for Claude Code agents, built on the **Claude Agent SDK**.
 Launch agents from the browser, give each a name + colour, talk to them in real
